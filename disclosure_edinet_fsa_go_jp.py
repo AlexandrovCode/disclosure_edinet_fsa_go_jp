@@ -8,8 +8,6 @@ import re
 from src.bstsouecepkg.extract import Extract
 from src.bstsouecepkg.extract import GetPages
 
-from requests_html import HTMLSession
-
 
 class Handler(Extract, GetPages):
     base_url = 'http://www.disclosure.edinet-fsa.go.jp'
@@ -82,19 +80,23 @@ class Handler(Extract, GetPages):
 
         tree = self.get_tree(url, headers=self.header)
         names = self.get_by_xpath(tree, '//tr/td[3]/div/text()[1]', return_list=True)[-1]
-        comp_name_text = self.get_by_xpath(tree, '//tr/td[4]/text()', return_list=True)[0]
+        comp_name_text = self.get_by_xpath(tree, '//tr/td[4]/text()', return_list=True)
         comp_name = self.get_by_xpath(tree, '//tr/td[4]/a/text()', return_list=True)[0]
         docs_no = self.get_by_xpath(tree, '//tr/td[2]/a/@onclick', return_list=True)
+        if comp_name_text:
+            comp_name_text = [i for i in comp_name_text if i != '']
+            comp_name_text = [i.replace('\r\n\t\t\t/', '') for i in comp_name_text]
         if docs_no:
             docs_no = [i.split("return clickDocNameForNotPaper('")[-1] for i in docs_no]
             docs_no = [i.split("'")[0] for i in docs_no]
         doc_no = docs_no[-1]
-        #print(comp_name_text, comp_name, docs_no, doc_no)
+        # print(comp_name_text, comp_name, docs_no, doc_no)
         company = {}
-
+        # print(comp_name_text)
+        # print(comp_name)
         try:
             if comp_name_text:
-                orga_name = comp_name_text
+                orga_name = comp_name_text[0].split('/')[0]
             else:
                 orga_name = comp_name
         except:
@@ -136,21 +138,23 @@ class Handler(Extract, GetPages):
         }
         tree = self.get_tree(post_link, headers=self.header, method='POST', data=data)
         h1 = self.get_by_xpath(tree, '//h1/text()')
-        id_c = re.findall('\d\d\d\d\d\d+', h1)[0]
-        if id_c:
-            company['identifiers'] = {'other_company_id_number': id_c}
+        try:
+            id_c = re.findall('\d\d\d\d\d\d+', h1)[0]
+            if id_c:
+                company['identifiers'] = {'other_company_id_number': id_c}
+        except:
+            pass
 
 
         url = f'https://disclosure.edinet-fsa.go.jp/E01EW/BLMainController.jsp?PID=W00Z1010&syoruiKanriNo={doc_no}&publicKbn=1&riyousyaKbn=E&SESSIONKEY=1640800180502&privateDocumentIndicateFlg=&teisyutuEngCheckResult=false&keyword1=&keyword2=&keyword3=&keyword4=&keyword5=&be.keyword=&be.keyword=&be.keyword=&be.keyword=&be.keyword=&lgKbn=2&uji.verb=W00Z1010init&uji.bean=ek.bean.EKW00Z1010Bean&TID=W00Z1010_10'
         tree = self.get_tree(url, headers=self.header)
         script = tree.xpath('//script/text()')
-        #print(script)
+        # print(script)
         bean_id = re.findall('be\.bean\.id=\d+', script[0])[0]
         download_id = re.findall('/E01EW/download\?\d+', script[0])[0]
         bean_id = bean_id.split('=')[-1]
         download_id = download_id.split('?')[-1]
-        #print(bean_id, download_id)
-
+        # print(bean_id, download_id)
 
         post2_link = 'https://disclosure.edinet-fsa.go.jp/E01EW/download?' + download_id
 
@@ -163,23 +167,27 @@ class Handler(Extract, GetPages):
             'PID': 'W00Z1010',
         }
         tree = self.get_tree(post2_link, headers=self.header, method='POST', data=data)
-        #print(tree.xpath('//text()'))
-        #print(tree.xpath('//p//text()'))
-        phones = self.get_by_xpath(tree, '//td/p//text()[contains(., "【電話番号】")]/../../following-sibling::td/p//text()', return_list=True)
+        # print(tree.xpath('//text()'))
+        # print(tree.xpath('//p//text()'))
+        phones = self.get_by_xpath(tree, '//td/p//text()[contains(., "【電話番号】")]/../../following-sibling::td/p//text()',
+                                   return_list=True)
         if not phones:
-            phones = self.get_by_xpath(tree, '//td/p//text()[contains(., "【電話番号】")]/../../../following-sibling::td/p//text()',
+            phones = self.get_by_xpath(tree,
+                                       '//td/p//text()[contains(., "【電話番号】")]/../../../following-sibling::td/p//text()',
                                        return_list=True)
-        #print(tree.xpath('//p//text()'))
+        # print(tree.xpath('//p//text()'))
         # print(phones)
         # print(phones)
         if phones:
             phones = [i for i in phones if i != '']
-            phones = [''.join(re.findall('\d',i)) for i in phones]
-            phones = [i for i in phones if i!='']
+            phones = [''.join(re.findall('\d', i)) for i in phones]
+            phones = [i for i in phones if i != '']
             # print(phones)
             # print(''.join(re.findall('\d',phones[-1])))
-            company['tr-org:hasRegisteredPhoneNumber'] = ''.join(re.findall('\d',phones[-1]))
-        addres = self.get_by_xpath(tree, '//td/p//text()[contains(., "【最寄りの連絡場所】")]/../../following-sibling::td//p//text()', return_list=True)
+            company['tr-org:hasRegisteredPhoneNumber'] = ''.join(re.findall('\d', phones[-1]))
+        addres = self.get_by_xpath(tree,
+                                   '//td/p//text()[contains(., "【最寄りの連絡場所】")]/../../following-sibling::td//p//text()',
+                                   return_list=True)
         if not addres:
             addres = self.get_by_xpath(tree,
                                        '//td/p//text()[contains(., "【最寄りの連絡場所】")]/../../../following-sibling::td//p//text()',
@@ -188,6 +196,10 @@ class Handler(Extract, GetPages):
             addres = self.get_by_xpath(tree,
                                        '//td/p//text()[contains(., "連絡場所")]/../../../following-sibling::td//p//text()',
                                        return_list=True)
+        if not addres:
+            addres = self.get_by_xpath(tree,
+                                       '//td/p//text()[contains(., "連絡場所")]/../../following-sibling::td//p//text()',
+                                       return_list=True)
         # print(addres)
         if addres:
             # print(addres)
@@ -195,16 +207,20 @@ class Handler(Extract, GetPages):
                 'country': 'Japan',
                 'fullAddress': ' '.join(addres)
             }
-        eng_name = self.get_by_xpath(tree, '//td/p//text()[contains(., "【英訳名】")]/../../following-sibling::td//p//text()', return_list=True)
+        eng_name = self.get_by_xpath(tree,
+                                     '//td/p//text()[contains(., "【英訳名】")]/../../following-sibling::td//p//text()',
+                                     return_list=True)
         if not eng_name:
             eng_name = self.get_by_xpath(tree,
-                                       '//td/p//text()[contains(., "【英訳名】")]/../../../following-sibling::td//p//text()',
-                                       return_list=True)
-        if eng_name:
-            company['vcard:organization-name'] = eng_name[0]
+                                         '//td/p//text()[contains(., "【英訳名】")]/../../../following-sibling::td//p//text()',
+                                         return_list=True)
+        # if eng_name:
+        #     company['vcard:organization-name'] = eng_name[0]
 
         company['@source-id'] = self.NICK_NAME
+        # print(company)
         return company
+
     def get_documents(self, link_name):
         # print(link_name)
         # doc_no = link_name.split('?=')[1]
@@ -227,7 +243,6 @@ class Handler(Extract, GetPages):
         links = self.get_by_xpath(tree, '//tr/td[6]/div/a/@href', return_list=True)
         dates = self.get_by_xpath(tree, '//tr/td[1]/div/text()', return_list=True)
 
-
         dates = [i.split('\u00a0')[0] for i in dates if i != '']
         # print(dates)
         dates = [f'2021-{date.split(".")[1]}-{date.split(".")[2]}' for date in dates]
@@ -244,5 +259,4 @@ class Handler(Extract, GetPages):
             }
             docs.append(temp_dict)
         return docs
-        #print(links)
-
+        # print(links)
